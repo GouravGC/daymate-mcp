@@ -1,5 +1,5 @@
 
-name: DayMate MCP CI and Docker Publish
+name: DayMate MCP CI/CD
 
 on:
   push:
@@ -77,3 +77,36 @@ jobs:
           tags: |
             ghcr.io/gouravgc/daymate-mcp:latest
             ghcr.io/gouravgc/daymate-mcp:sha-${{ github.sha }}
+
+  deploy-render:
+    name: Deploy Published Image to Render
+    needs: publish-image
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Trigger Render with this commit's image
+        env:
+          RENDER_DEPLOY_HOOK_URL: ${{ secrets.RENDER_DEPLOY_HOOK_URL }}
+          IMAGE_URL: ghcr.io/gouravgc/daymate-mcp:sha-${{ github.sha }}
+        run: |
+          set -eu
+
+          if [ -z "$RENDER_DEPLOY_HOOK_URL" ]; then
+            echo "Missing GitHub secret: RENDER_DEPLOY_HOOK_URL"
+            exit 1
+          fi
+
+          ENCODED_IMAGE=$(python -c \
+            "import os, urllib.parse; print(urllib.parse.quote(os.environ['IMAGE_URL'], safe=''))")
+
+          case "$RENDER_DEPLOY_HOOK_URL" in
+            *\?*) SEPARATOR="&" ;;
+            *) SEPARATOR="?" ;;
+          esac
+
+          curl --fail --silent --show-error \
+            --request POST \
+            "${RENDER_DEPLOY_HOOK_URL}${SEPARATOR}imgURL=${ENCODED_IMAGE}"
+
+          echo "Render deployment triggered for the published commit image."
