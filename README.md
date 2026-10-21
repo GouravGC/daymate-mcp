@@ -98,3 +98,4 @@ GitHub Actions runs the automated tests and checks dependency consistency on pus
 ## License
 
 This project is licensed under the MIT License. See `LICENSE`.
+CI/CD smoke test: GitHub Actions validates changes and publishes Docker images before deployment.
