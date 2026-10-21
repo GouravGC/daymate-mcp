@@ -2,7 +2,6 @@
 import os
 
 from mcp.server.fastmcp import FastMCP
-
 from daymate.core import TaskManager
 
 mcp = FastMCP("DayMate MCP")
@@ -28,7 +27,6 @@ def complete_task(task_id: int) -> dict:
 
 
 if __name__ == "__main__":
-    port = int(os.environ.get("PORT", "8000"))
     mcp.settings.host = "0.0.0.0"
-    mcp.settings.port = port
+    mcp.settings.port = int(os.environ.get("PORT", "8000"))
     mcp.run(transport="streamable-http")
