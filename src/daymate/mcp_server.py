@@ -1,0 +1,29 @@
+
+from mcp.server.fastmcp import FastMCP
+
+from daymate.core import TaskManager
+
+mcp = FastMCP("DayMate MCP")
+manager = TaskManager()
+
+
+@mcp.tool()
+def add_task(title: str) -> dict:
+    """Add a new task to the user's task list."""
+    return manager.add_task(title)
+
+
+@mcp.tool()
+def list_tasks() -> list[dict]:
+    """List all tasks and their completion status."""
+    return manager.list_tasks()
+
+
+@mcp.tool()
+def complete_task(task_id: int) -> dict:
+    """Mark a task as completed using its ID."""
+    return manager.complete_task(task_id)
+
+
+if __name__ == "__main__":
+    mcp.run(transport="streamable-http")
