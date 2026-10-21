@@ -1,14 +1,19 @@
 
-name: DayMate MCP CI
+name: DayMate MCP CI/CD
 
 on:
   push:
+    branches: [main]
   pull_request:
+    branches: [main]
   workflow_dispatch:
+
+permissions:
+  contents: read
 
 jobs:
   test:
-    name: Python tests
+    name: Run Python Tests
     runs-on: ubuntu-latest
 
     steps:
@@ -27,10 +32,30 @@ jobs:
           python -m pip install --upgrade pip
           python -m pip install -r requirements.txt
 
-      - name: Check dependency consistency
+      - name: Check dependencies
         run: python -m pip check
 
-      - name: Run automated tests
+      - name: Run tests
         env:
           PYTHONPATH: src
         run: python -m pytest -v
+
+  deploy:
+    name: Trigger Render Deployment
+    needs: test
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Trigger deployment
+        env:
+          RENDER_DEPLOY_HOOK_URL: ${{ secrets.RENDER_DEPLOY_HOOK_URL }}
+        run: |
+          if [ -z "$RENDER_DEPLOY_HOOK_URL" ]; then
+            echo "RENDER_DEPLOY_HOOK_URL secret is not configured yet."
+            exit 1
+          fi
+
+          curl --fail --silent --show-error \
+            --request POST \
+            "$RENDER_DEPLOY_HOOK_URL"
