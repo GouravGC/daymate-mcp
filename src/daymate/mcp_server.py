@@ -2,9 +2,21 @@
 import os
 
 from mcp.server.fastmcp import FastMCP
+from mcp.server.transport_security import TransportSecuritySettings
+
 from daymate.core import TaskManager
 
-mcp = FastMCP("DayMate MCP")
+mcp = FastMCP(
+    "DayMate MCP",
+    transport_security=TransportSecuritySettings(
+        enable_dns_rebinding_protection=True,
+        allowed_hosts=[
+            "daymate-mcp-latest.onrender.com",
+            "daymate-mcp-latest.onrender.com:*",
+        ],
+    ),
+)
+
 manager = TaskManager()
 
 
