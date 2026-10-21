@@ -26,7 +26,6 @@ MCP_SERVER_URL = os.getenv("MCP_SERVER_URL", DEFAULT_MCP_URL)
 try:
     MCP_SERVER_URL = st.secrets.get("MCP_SERVER_URL", MCP_SERVER_URL)
 except Exception:
-    # Local development works without a secrets file.
     pass
 
 
@@ -38,8 +37,7 @@ def decode_result(result):
     """Convert MCP tool output into Python data."""
     if getattr(result, "isError", False):
         messages = [
-            item.text
-            for item in result.content
+            item.text for item in result.content
             if hasattr(item, "text")
         ]
         raise RuntimeError(
@@ -51,8 +49,7 @@ def decode_result(result):
         return structured
 
     messages = [
-        item.text
-        for item in result.content
+        item.text for item in result.content
         if hasattr(item, "text")
     ]
 
@@ -68,20 +65,15 @@ def decode_result(result):
 
 
 async def call_mcp_tool(tool_name, arguments=None):
-    """Connect to the remote MCP server and invoke one tool."""
-    async with streamablehttp_client(MCP_SERVER_URL) as (
-        read_stream,
-        write_stream,
-        _,
-    ):
-        async with ClientSession(
-            read_stream,
-            write_stream,
-        ) as session:
+    """Open an MCP session and invoke a tool."""
+    async with streamablehttp_client(MCP_SERVER_URL) as streams:
+        read_stream, write_stream, _ = streams
+
+        async with ClientSession(read_stream, write_stream) as session:
             await session.initialize()
 
-            tool_result = await session.list_tools()
-            available = {tool.name for tool in tool_result.tools}
+            tools_result = await session.list_tools()
+            available = {tool.name for tool in tools_result.tools}
 
             if tool_name not in available:
                 raise RuntimeError(
@@ -91,28 +83,23 @@ async def call_mcp_tool(tool_name, arguments=None):
 
             result = await session.call_tool(
                 tool_name,
-                arguments or {},
+                arguments=arguments or {},
             )
-
             return decode_result(result)
 
 
 def invoke_tool(tool_name, arguments=None):
-    """Run an async MCP call from Streamlit."""
-    return asyncio.run(
-        call_mcp_tool(tool_name, arguments)
-    )
+    """Run an asynchronous MCP call from Streamlit."""
+    return asyncio.run(call_mcp_tool(tool_name, arguments))
 
 
 def normalize_tasks(result):
-    """Normalize list_tasks output into a list of dictionaries."""
+    """Normalize MCP task results."""
     if isinstance(result, dict):
         result = result.get("tasks", [result])
 
     if not isinstance(result, list):
-        raise RuntimeError(
-            f"Unexpected task response: {result}"
-        )
+        raise RuntimeError(f"Unexpected task response: {result!r}")
 
     tasks = []
 
@@ -120,6 +107,13 @@ def normalize_tasks(result):
         if isinstance(task, dict) and "id" in task:
             tasks.append(task)
 
+    return tasks
+
+
+def refresh_tasks():
+    """Always reload the task list from the backend."""
+    tasks = normalize_tasks(invoke_tool("list_tasks"))
+    st.session_state["tasks"] = tasks
     return tasks
 
 
@@ -135,7 +129,6 @@ st.markdown(
         padding-bottom: 3rem;
         max-width: 1150px;
     }
-
     .hero {
         padding: 1.8rem;
         border-radius: 18px;
@@ -143,26 +136,18 @@ st.markdown(
         color: #ffffff;
         margin-bottom: 1.5rem;
     }
-
     .hero h1 {
         font-size: 2.4rem;
         margin-bottom: 0.4rem;
     }
-
     .hero p {
         color: #d4e7df;
         margin-bottom: 0;
     }
-
     div[data-testid="stMetric"] {
         border: 1px solid rgba(128,128,128,0.25);
         border-radius: 14px;
         padding: 16px;
-    }
-
-    .muted {
-        color: #8b949e;
-        font-size: 0.9rem;
     }
     </style>
     """,
@@ -171,7 +156,7 @@ st.markdown(
 
 
 # --------------------------------------------------
-# Header
+# Sidebar and header
 # --------------------------------------------------
 
 with st.sidebar:
@@ -183,6 +168,7 @@ with st.sidebar:
     st.code(MCP_SERVER_URL, language=None)
 
     if st.button("↻ Refresh tasks", use_container_width=True):
+        st.session_state["force_refresh"] = True
         st.rerun()
 
     st.divider()
@@ -204,34 +190,34 @@ st.markdown(
 
 
 # --------------------------------------------------
-# Load tasks from the real backend
+# Load task data
 # --------------------------------------------------
 
 try:
-    tasks = normalize_tasks(invoke_tool("list_tasks"))
+    if st.session_state.pop("force_refresh", False):
+        st.session_state.pop("tasks", None)
+
+    # Always retrieve fresh data instead of trusting stale UI state.
+    tasks = refresh_tasks()
     connected = True
     error_message = None
+
 except Exception as exc:
     tasks = []
     connected = False
-    error_message = str(exc)
+    error_message = repr(exc)
 
-if connected:
-    st.success("Connected to the DayMate MCP backend.")
-else:
-    st.error("Could not connect to the MCP backend.")
+if not connected:
+    st.error("Could not load tasks from the MCP backend.")
     st.warning(
-        "Check that the Render service is Live and that "
-        "the Streamable HTTP endpoint is configured correctly."
+        "The connection or task-list request failed. "
+        "Check the Render service logs and MCP response."
     )
-    with st.expander("Connection details"):
-        st.code(error_message or "Unknown connection error")
-
-    st.info(
-        "The dashboard cannot load or modify tasks until "
-        "the backend connection is working."
-    )
+    with st.expander("Connection details", expanded=True):
+        st.code(error_message or "Unknown error")
     st.stop()
+
+st.success("Connected to the DayMate MCP backend.")
 
 
 # --------------------------------------------------
@@ -239,14 +225,11 @@ else:
 # --------------------------------------------------
 
 completed_count = sum(
-    bool(task.get("completed", False))
-    for task in tasks
+    bool(task.get("completed", False)) for task in tasks
 )
-
 pending_count = len(tasks) - completed_count
 
 col1, col2, col3 = st.columns(3)
-
 col1.metric("Total tasks", len(tasks))
 col2.metric("Pending", pending_count)
 col3.metric("Completed", completed_count)
@@ -282,13 +265,21 @@ with st.form("add_task_form", clear_on_submit=True):
                     "add_task",
                     {"title": title.strip()},
                 )
+
+                # Fetch the list immediately after creating the task.
+                tasks = refresh_tasks()
+
                 st.session_state["flash_message"] = (
-                    f"Task added successfully: {created}"
+                    f"Task added: {created}"
                 )
                 st.rerun()
-            except Exception as exc:
-                st.error(f"Could not add task: {exc}")
 
+            except Exception as exc:
+                st.error(
+                    "The add or refresh operation failed. "
+                    "Check the backend response."
+                )
+                st.code(repr(exc))
 
 if "flash_message" in st.session_state:
     st.success(st.session_state.pop("flash_message"))
@@ -301,15 +292,13 @@ if "flash_message" in st.session_state:
 st.subheader("📋 Your tasks")
 
 if not tasks:
-    st.info(
-        "No tasks yet. Add your first task above to get started."
-    )
+    st.info("No tasks yet. Add your first task above to get started.")
+
 else:
     pending_tasks = [
         task for task in tasks
         if not task.get("completed", False)
     ]
-
     completed_tasks = [
         task for task in tasks
         if task.get("completed", False)
@@ -342,18 +331,23 @@ else:
                             "complete_task",
                             {"task_id": int(task_id)},
                         )
+
+                        # Verify the updated task list from the server.
+                        tasks = refresh_tasks()
+
                         st.session_state["flash_message"] = (
-                            f"Task #{task_id} completed!"
+                            f"Task #{task_id} completed."
                         )
                         st.rerun()
+
                     except Exception as exc:
-                        st.error(
-                            f"Could not complete task: {exc}"
-                        )
+                        st.error("Could not complete or refresh the task.")
+                        st.code(repr(exc))
 
     if completed_tasks:
         with st.expander(
-            f"✅ Completed tasks ({len(completed_tasks)})"
+            f"✅ Completed tasks ({len(completed_tasks)})",
+            expanded=True,
         ):
             for task in completed_tasks:
                 st.markdown(
@@ -369,5 +363,5 @@ else:
 st.divider()
 st.caption(
     "DayMate MCP · Actions are executed by the remote MCP server. "
-    "Tasks currently depend on the backend's in-memory storage."
+    "Tasks use the backend's in-memory storage."
 )
