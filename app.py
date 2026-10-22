@@ -88,13 +88,15 @@ def load_tasks():
     return normalize_tasks(invoke_tool("list_tasks"))
 
 
-def show_task(task):
+
+def show_task(task, view="default"):
     task_id = task.get("id", "?")
     title = str(task.get("title", "Untitled task"))
     completed = bool(task.get("completed", False))
 
     with st.container(border=True):
         left, right = st.columns([5, 1])
+
         with left:
             if completed:
                 st.markdown(f"~~{title}~~")
@@ -105,11 +107,19 @@ def show_task(task):
 
         with right:
             if not completed and isinstance(task_id, int):
-                if st.button("Complete", key=f"complete_{task_id}"):
+                if st.button(
+                    "Complete",
+                    key=f"complete_{view}_{task_id}",
+                ):
                     try:
                         with st.spinner("Updating task..."):
-                            invoke_tool("complete_task", {"task_id": task_id})
-                        st.session_state["notice"] = f"Task #{task_id} completed."
+                            invoke_tool(
+                                "complete_task",
+                                {"task_id": task_id},
+                            )
+                        st.session_state["notice"] = (
+                            f"Task #{task_id} completed."
+                        )
                         st.rerun()
                     except Exception as exc:
                         st.error(f"Could not complete task: {exc}")
@@ -170,21 +180,21 @@ try:
     with tab_pending:
         if pending:
             for task in pending:
-                show_task(task)
+                show_task(task, view="pending")
         else:
             st.info("No pending tasks. Add one above!")
 
     with tab_completed:
         if completed:
             for task in completed:
-                show_task(task)
+                show_task(task, view="completed")
         else:
             st.info("Completed tasks will appear here.")
 
     with tab_all:
         if tasks:
             for task in tasks:
-                show_task(task)
+                show_task(task, view="all")
         else:
             st.info("No tasks yet. Create your first task above.")
 
