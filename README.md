@@ -1,101 +1,123 @@
 
 # DayMate MCP
 
-An AI-ready everyday task assistant built with Python and the Model Context Protocol (MCP).
-
-DayMate exposes task-management tools through a Streamable HTTP MCP server, providing a foundation for conversational assistants and future integrations.
+A lightweight task-management application built with Python, the Model Context Protocol (MCP), SQLite, and Streamlit.
 
 ## Features
 
-- Create tasks with unique IDs.
-- List tasks and their completion status.
+- Add tasks through an MCP tool.
+- List tasks and completion status.
 - Mark tasks as completed.
-- Validate empty task titles and unknown task IDs.
-- Expose functionality through three MCP tools.
-- Run automated tests with pytest.
-- Use GitHub Actions for continuous integration.
+- Use a Streamlit dashboard to manage tasks.
+- Run automated backend tests with pytest.
+- Build and deploy the backend using Docker and GitHub Actions.
 
-## Tech Stack
-
-- Python 3.11
-- Model Context Protocol (MCP)
-- Streamlit (planned)
-- Pytest
-- GitHub Actions
-
-## Project Structure
+## Architecture
 
 ```text
-DayMate-MCP/
-├── .github/
-│   └── workflows/
-│       └── ci.yml
-├── docs/
-├── logs/
-├── src/
-│   └── daymate/
-│       ├── __init__.py
-│       ├── core.py
-│       └── mcp_server.py
-├── tests/
-│   └── test_core.py
-├── .gitignore
-├── LICENSE
-├── README.md
-└── requirements.txt
+User
+ |
+ v
+Streamlit frontend (frontend/app.py)
+ |
+ v
+MCP Streamable HTTP client
+ |
+ v
+DayMate MCP server (src/daymate/mcp_server.py)
+ |
+ v
+TaskManager (src/daymate/core.py)
+ |
+ v
+SQLite database
 ```
 
-## Setup
+## MCP tools
 
-Create and activate a Conda environment with Python 3.11, then install dependencies:
+| Tool | Purpose |
+| --- | --- |
+| `add_task(title)` | Create a task |
+| `list_tasks()` | List tasks and statuses |
+| `complete_task(task_id)` | Mark a task completed |
+
+## Live deployment
+
+- Backend service: https://daymate-mcp-latest.onrender.com/
+- MCP endpoint: https://daymate-mcp-latest.onrender.com/mcp
+- Frontend: Add your published Streamlit app URL here.
+
+The backend root URL may not serve a browser webpage. Use an MCP-compatible client or the Streamlit frontend to test the MCP endpoint.
+
+## Requirements
+
+- Python 3.11
+- pip
+- Git
+- Docker (optional for local container testing)
+
+## Local setup
+
+Clone the repository:
 
 ```bash
-python -m pip install -r requirements.txt
-python -m pip check
+git clone https://github.com/GouravGC/daymate-mcp.git
+cd daymate-mcp
 ```
 
-## Run the MCP Server
+Create and activate a virtual environment, then install dependencies:
 
-From the project root:
+```bash
+python -m venv .venv
+```
 
-**Windows CMD**
+Windows CMD:
 
-```cmd
+```bat
+.venv\Scripts\activate
+pip install -r requirements.txt
 set PYTHONPATH=src
 python -m daymate.mcp_server
 ```
 
-The local server uses Streamable HTTP at `http://127.0.0.1:8000`.
+The backend listens on port 8000 by default.
 
-Keep the terminal running while connecting an MCP client. The MCP endpoint is `/mcp`; the root URL is not a web dashboard.
+In a second terminal, set up and launch the frontend:
 
-## Available MCP Tools
-
-| Tool | Description |
-|---|---|
-| `add_task` | Create a task |
-| `list_tasks` | List tasks |
-| `complete_task` | Mark a task complete |
-
-## Run Tests
-
-```cmd
-set PYTHONPATH=src
-python -m pytest -v
+```bat
+pip install -r frontend/requirements.txt
+streamlit run frontend/app.py
 ```
 
-## Continuous Integration
+Set `MCP_SERVER_URL` if the backend runs at a different address.
 
-GitHub Actions runs the automated tests and checks dependency consistency on pushes and pull requests.
+## Tests
 
-## Current Limitations
+From the repository root, run:
 
-- Tasks are held in memory and are lost when the server restarts.
-- Authentication and persistent storage are not implemented.
-- The Streamlit interface and external assistant integrations are planned.
-- A local MCP server does not, by itself, constitute an official Alexa+ integration.
+Windows CMD:
+
+```bat
+set PYTHONPATH=src
+python -m pytest -q
+```
+
+## Deployment
+
+The repository includes a Dockerfile and GitHub Actions workflow. Check the Actions tab for test and deployment status. Configure the required GitHub secrets in repository settings; never commit deployment tokens.
+
+## Storage limitations
+
+The default deployed database path is `/tmp/daymate_tasks.db`. This is suitable for a simple demonstration but is not guaranteed to survive container replacement or redeployment. Use a persistent disk or external database for durable production storage. A single SQLite file is not a shared database across multiple independent server instances.
+
+## Security and limitations
+
+- The current application is a demonstration task manager.
+- It does not implement user authentication or per-user task isolation.
+- Do not store confidential or sensitive information in tasks.
+- Use HTTPS for remote connections.
+- Keep deployment credentials out of source control.
 
 ## License
 
-This project is licensed under the MIT License. See `LICENSE`.
-CI/CD smoke test: GitHub Actions validates changes and publishes Docker images before deployment.
+MIT License. See [LICENSE](LICENSE).

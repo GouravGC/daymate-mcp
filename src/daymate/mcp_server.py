@@ -6,6 +6,7 @@ from mcp.server.transport_security import TransportSecuritySettings
 
 from daymate.core import TaskManager
 
+
 mcp = FastMCP(
     "DayMate MCP",
     transport_security=TransportSecuritySettings(
@@ -17,7 +18,9 @@ mcp = FastMCP(
     ),
 )
 
-manager = TaskManager()
+manager = TaskManager(
+    os.environ.get("DAYMATE_DB_PATH", "/tmp/daymate_tasks.db")
+)
 
 
 @mcp.tool()

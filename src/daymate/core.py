@@ -1,40 +1,80 @@
 
-from dataclasses import dataclass, field
+import sqlite3
+import threading
 
 
-@dataclass
 class TaskManager:
-    """Manage tasks for the DayMate assistant."""
+    """SQLite-backed task manager shared across MCP sessions."""
 
-    tasks: list[dict] = field(default_factory=list)
-    next_id: int = 1
+    def __init__(self, db_path=":memory:"):
+        self._lock = threading.Lock()
+        self._connection = sqlite3.connect(
+            db_path,
+            check_same_thread=False,
+            timeout=30,
+        )
+        self._connection.row_factory = sqlite3.Row
+
+        with self._lock:
+            self._connection.execute(
+                """
+                CREATE TABLE IF NOT EXISTS tasks (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    title TEXT NOT NULL,
+                    completed INTEGER NOT NULL DEFAULT 0
+                )
+                """
+            )
+            self._connection.commit()
 
     def add_task(self, title: str) -> dict:
-        """Create a task and return it."""
         title = title.strip()
-
         if not title:
             raise ValueError("Task title cannot be empty.")
 
-        task = {
-            "id": self.next_id,
-            "title": title,
-            "completed": False,
-        }
+        with self._lock:
+            cursor = self._connection.execute(
+                "INSERT INTO tasks (title, completed) VALUES (?, 0)",
+                (title,),
+            )
+            self._connection.commit()
+            row = self._connection.execute(
+                "SELECT id, title, completed FROM tasks WHERE id = ?",
+                (cursor.lastrowid,),
+            ).fetchone()
 
-        self.tasks.append(task)
-        self.next_id += 1
-        return task
+        return self._to_dict(row)
 
     def list_tasks(self) -> list[dict]:
-        """Return all tasks."""
-        return [task.copy() for task in self.tasks]
+        with self._lock:
+            rows = self._connection.execute(
+                "SELECT id, title, completed FROM tasks ORDER BY id"
+            ).fetchall()
+
+        return [self._to_dict(row) for row in rows]
 
     def complete_task(self, task_id: int) -> dict:
-        """Mark a task as completed."""
-        for task in self.tasks:
-            if task["id"] == task_id:
-                task["completed"] = True
-                return task.copy()
+        with self._lock:
+            cursor = self._connection.execute(
+                "UPDATE tasks SET completed = 1 WHERE id = ?",
+                (task_id,),
+            )
+            self._connection.commit()
 
-        raise ValueError(f"Task {task_id} was not found.")
+            if cursor.rowcount == 0:
+                raise ValueError(f"Task {task_id} was not found.")
+
+            row = self._connection.execute(
+                "SELECT id, title, completed FROM tasks WHERE id = ?",
+                (task_id,),
+            ).fetchone()
+
+        return self._to_dict(row)
+
+    @staticmethod
+    def _to_dict(row) -> dict:
+        return {
+            "id": row["id"],
+            "title": row["title"],
+            "completed": bool(row["completed"]),
+        }
