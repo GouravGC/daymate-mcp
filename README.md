@@ -1,123 +1,170 @@
+# 🌱 DayMate MCP
 
-# DayMate MCP
+**Make progress, one task at a time.**
 
-A lightweight task-management application built with Python, the Model Context Protocol (MCP), SQLite, and Streamlit.
+DayMate MCP is an AI-powered task-planning application that helps turn a personal goal into manageable tasks. Review an AI-generated plan, choose which tasks to keep, and manage your tasks through a deployed Model Context Protocol (MCP) server.
 
-## Features
+Built with Python, Streamlit, the Model Context Protocol, and OpenRouter.
 
-- Add tasks through an MCP tool.
-- List tasks and completion status.
-- Mark tasks as completed.
-- Use a Streamlit dashboard to manage tasks.
-- Run automated backend tests with pytest.
-- Build and deploy the backend using Docker and GitHub Actions.
+## 🎥 Demo and Evidence
 
-## Architecture
+- **Demo video:** https://youtu.be/eplJfpuzee0
+- **Screenshots and evidence:** https://github.com/GouravGC/daymate-mcp/tree/main/evidence
+- **Source code:** https://github.com/GouravGC/daymate-mcp
+
+## ✨ Features
+
+- **AI-powered planning:** Turn a goal into a structured task plan using an OpenRouter-hosted language model.
+- **Review before adding:** Review proposed tasks and select the ones you want to create.
+- **MCP-powered task management:** Create, list, and complete tasks through the deployed MCP backend.
+- **Task dashboard:** View pending, completed, and all tasks.
+- **Robust AI response parsing:** Handles JSON responses that may contain Markdown code fences or surrounding text.
+- **Automated testing:** Run project tests with pytest.
+- **CI/CD:** GitHub Actions validates project changes; the deployment pipeline supports publishing and deploying the backend.
+
+## 🧰 Tech Stack
+
+| Component | Technology |
+|---|---|
+| Frontend | Streamlit |
+| Backend | Python |
+| AI planning | OpenRouter |
+| Tool integration | Model Context Protocol (MCP) |
+| Deployment | Render |
+| Testing | pytest |
+| Automation | GitHub Actions |
+
+## 🏗️ Architecture
 
 ```text
 User
- |
- v
-Streamlit frontend (frontend/app.py)
- |
- v
-MCP Streamable HTTP client
- |
- v
-DayMate MCP server (src/daymate/mcp_server.py)
- |
- v
-TaskManager (src/daymate/core.py)
- |
- v
-SQLite database
+  |
+  v
+Streamlit Application
+  |
+  +--> OpenRouter --> AI-generated task plan
+  |                     |
+  |                     v
+  |              User reviews tasks
+  |
+  v
+Approved task titles
+  |
+  v
+Deployed MCP Server
+  |
+  +--> add_task(title)
+  +--> list_tasks()
+  +--> complete_task(task_id)
 ```
 
-## MCP tools
+The AI planner proposes tasks, while the MCP server exposes the task-management tools. AI-suggested day, duration, and priority are planning information; the current MCP task tools store task titles rather than that additional metadata.
+
+## 🔌 Deployed MCP Backend
+
+**MCP endpoint:**
+
+https://daymate-mcp-latest.onrender.com/mcp
+
+The server uses the Streamable HTTP transport for MCP communication.
+
+### Available MCP tools
 
 | Tool | Purpose |
-| --- | --- |
-| `add_task(title)` | Create a task |
-| `list_tasks()` | List tasks and statuses |
-| `complete_task(task_id)` | Mark a task completed |
+|---|---|
+| `add_task(title: str)` | Create a task using its title. |
+| `list_tasks()` | Retrieve the available tasks. |
+| `complete_task(task_id: int)` | Mark a task as completed. |
 
-## Live deployment
+These tools allow an MCP-compatible client to interact with the task-management functionality through the protocol.
 
-- Backend service: https://daymate-mcp-latest.onrender.com/
-- MCP endpoint: https://daymate-mcp-latest.onrender.com/mcp
-- Frontend: Add your published Streamlit app URL here.
+## 🚀 Run Locally
 
-The backend root URL may not serve a browser webpage. Use an MCP-compatible client or the Streamlit frontend to test the MCP endpoint.
-
-## Requirements
+### Prerequisites
 
 - Python 3.11
-- pip
 - Git
-- Docker (optional for local container testing)
+- An OpenRouter API key for AI-powered planning
 
-## Local setup
-
-Clone the repository:
+### 1. Clone the repository
 
 ```bash
 git clone https://github.com/GouravGC/daymate-mcp.git
 cd daymate-mcp
 ```
 
-Create and activate a virtual environment, then install dependencies:
+### 2. Create and activate a virtual environment
 
-```bash
+Windows Command Prompt:
+
+```cmd
 python -m venv .venv
-```
-
-Windows CMD:
-
-```bat
 .venv\Scripts\activate
+```
+
+### 3. Install dependencies
+
+```cmd
+python -m pip install --upgrade pip
 pip install -r requirements.txt
-set PYTHONPATH=src
-python -m daymate.mcp_server
 ```
 
-The backend listens on port 8000 by default.
+### 4. Configure the AI API key
 
-In a second terminal, set up and launch the frontend:
+Configure your OpenRouter API key using the environment-variable or Streamlit secrets mechanism expected by the application. Keep your actual API key private and never commit credentials to GitHub.
 
-```bat
-pip install -r frontend/requirements.txt
-streamlit run frontend/app.py
+### 5. Start the Streamlit application
+
+```cmd
+streamlit run app.py
 ```
 
-Set `MCP_SERVER_URL` if the backend runs at a different address.
+Open the local URL printed in your terminal.
 
-## Tests
+> The frontend requires its AI API key for AI-powered planning. The deployed MCP backend is hosted separately.
 
-From the repository root, run:
+## 🧪 Run Tests
 
-Windows CMD:
+Run the automated test suite from the repository root:
 
-```bat
-set PYTHONPATH=src
-python -m pytest -q
+```cmd
+python -m pytest
 ```
 
-## Deployment
+## 🔄 CI/CD
 
-The repository includes a Dockerfile and GitHub Actions workflow. Check the Actions tab for test and deployment status. Configure the required GitHub secrets in repository settings; never commit deployment tokens.
+The repository includes GitHub Actions automation for validating project changes. The backend deployment workflow supports building and publishing the application image and deploying it to Render.
 
-## Storage limitations
+Check the repository's **Actions** tab for the latest workflow results.
 
-The default deployed database path is `/tmp/daymate_tasks.db`. This is suitable for a simple demonstration but is not guaranteed to survive container replacement or redeployment. Use a persistent disk or external database for durable production storage. A single SQLite file is not a shared database across multiple independent server instances.
+## 🔐 Limitations and Scope
 
-## Security and limitations
+- Task storage is temporary and should not be treated as durable storage; tasks may be lost when the backend restarts.
+- The MCP task tools currently store task titles, not the AI planner's suggested day, duration, or priority.
+- AI-generated plans are suggestions that users can review before creating tasks.
+- The project demonstrates MCP-based task management and an Alexa+-style assistant workflow; it does not claim a native Alexa device integration.
+- Do not use the current deployment for sensitive or production-critical task data.
 
-- The current application is a demonstration task manager.
-- It does not implement user authentication or per-user task isolation.
-- Do not store confidential or sensitive information in tasks.
-- Use HTTPS for remote connections.
-- Keep deployment credentials out of source control.
+## 🗺️ Future Improvements
 
-## License
+- Persistent task storage
+- Task deadlines, priorities, and duration metadata in the backend
+- Authentication and user-specific task isolation
+- Additional assistant and voice-platform integrations
 
-MIT License. See [LICENSE](LICENSE).
+## 🤝 Contributing
+
+Contributions, bug reports, and suggestions are welcome.
+
+1. Fork the repository.
+2. Create a feature branch.
+3. Make and test your changes.
+4. Open a pull request with a clear description.
+
+## 📄 License
+
+See the [`LICENSE`](LICENSE) file in this repository.
+
+---
+
+**Built by [GouravGC](https://github.com/GouravGC).**
