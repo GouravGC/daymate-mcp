@@ -99,132 +99,186 @@ def load_tasks():
 
 
 def generate_plan(goal, days, hours_per_day):
-    if not OPENROUTER_API_KEY:
-        raise RuntimeError(
-            "OPENROUTER_API_KEY is missing. Check your root .env file."
+    import os
+    import json
+    import re
+    import requests
+
+    api_key = os.getenv("OPENROUTER_API_KEY")
+    model = os.getenv("OPENROUTER_MODEL", "openrouter/free")
+
+    if not api_key:
+        raise ValueError(
+            "OPENROUTER_API_KEY is missing. Configure it in your environment."
         )
 
     prompt = f"""
-Create a practical task plan for this goal:
-{goal}
+Create a practical task plan for this goal: {goal}
 
-Time available: {days} days.
-Daily time budget: {hours_per_day} hours.
+Duration: {days} days
+Available time per day: {hours_per_day} hours
 
-Return ONLY valid JSON in this format:
+Return a JSON object with this exact structure:
 {{
   "tasks": [
     {{
-      "title": "A clear, actionable task",
+      "title": "Study Python variables",
       "day": 1,
-      "duration_minutes": 45,
+      "duration_minutes": 30,
       "priority": "High"
     }}
   ]
 }}
 
-Rules:
-- Generate between 3 and 10 useful tasks.
-- Spread tasks across the available days.
-- Keep each task concrete and achievable.
-- Respect the daily time budget.
-- Use short task titles, maximum 150 characters.
-- Day numbers must be between 1 and {days}.
+Requirements:
+- Generate 3 to 10 actionable tasks.
+- Each task must have a short title.
+- day must be an integer from 1 to {days}.
 - duration_minutes must be a positive integer.
 - priority must be High, Medium, or Low.
-- Do not include Markdown or text outside the JSON.
+- Return only JSON, without Markdown or explanations.
 """
 
-    response = requests.post(
-        "https://openrouter.ai/api/v1/chat/completions",
-        headers={
-            "Authorization": f"Bearer {OPENROUTER_API_KEY}",
-            "Content-Type": "application/json",
-            "X-Title": "DayMate AI Planner",
-        },
-        json={
-            "model": OPENROUTER_MODEL,
-            "messages": [
-                {
-                    "role": "system",
-                    "content": (
-                        "You are a practical productivity planner. "
-                        "Return only valid JSON matching the requested schema."
-                    ),
-                },
-                {"role": "user", "content": prompt},
-            ],
-            "temperature": 0.4,
-            "max_tokens": 1200,
-        },
-        timeout=60,
-    )
-
-    if not response.ok:
-        raise RuntimeError(
-            f"OpenRouter returned HTTP {response.status_code}: "
-            f"{response.text[:500]}"
-        )
-
-    data = response.json()
-    choices = data.get("choices", [])
-
-    if not choices:
-        raise RuntimeError("The AI provider returned no response choices.")
-
-    content = choices[0].get("message", {}).get("content", "")
-    if isinstance(content, list):
-        content = "".join(
-            part.get("text", "")
-            for part in content
-            if isinstance(part, dict)
-        )
-
-    content = str(content).strip()
-    content = re.sub(r"^```(?:json)?\s*", "", content)
-    content = re.sub(r"\s*```$", "", content)
-
     try:
-        parsed = json.loads(content)
-    except json.JSONDecodeError as exc:
-        raise RuntimeError(
-            "The AI response was not valid JSON. Try generating the plan again."
-        ) from exc
+        response = requests.post(
+            "https://openrouter.ai/api/v1/chat/completions",
+            headers={
+                "Authorization": f"Bearer {api_key}",
+                "Content-Type": "application/json",
+            },
+            json={
+                "model": model,
+                "messages": [
+                    {
+                        "role": "system",
+                        "content": (
+                            "You are a task-planning assistant. "
+                            "Return one valid JSON object only. "
+                            "Do not use Markdown or add explanations."
+                        ),
+                    },
+                    {"role": "user", "content": prompt},
+                ],
+                "temperature": 0.1,
+                "max_tokens": 1500,
+            },
+            timeout=60,
+        )
 
-    raw_tasks = parsed.get("tasks", []) if isinstance(parsed, dict) else parsed
+        if not response.ok:
+            raise RuntimeError(
+                f"OpenRouter error {response.status_code}: "
+                f"{response.text[:400]}"
+            )
 
-    if not isinstance(raw_tasks, list) or not raw_tasks:
-        raise RuntimeError("The AI did not generate any usable tasks.")
+        result = response.json()
+        choices = result.get("choices", [])
 
-    plan = []
+        if not choices:
+            raise ValueError(
+                f"The AI returned no choices: {str(result)[:300]}"
+            )
 
-    for item in raw_tasks[:10]:
-        if not isinstance(item, dict):
-            continue
+        content = choices[0].get("message", {}).get("content", "")
 
-        title = str(item.get("title", "")).strip()
-        if not title:
-            continue
+        if isinstance(content, list):
+            content = "\n".join(
+                item.get("text", "")
+                for item in content
+                if isinstance(item, dict)
+            )
+
+        if not isinstance(content, str) or not content.strip():
+            raise ValueError("The AI returned an empty response.")
+
+        # Remove optional Markdown fences.
+        cleaned = content.strip()
+        cleaned = re.sub(
+            r"^\s*```(?:json)?\s*",
+            "",
+            cleaned,
+            flags=re.IGNORECASE,
+        )
+        cleaned = re.sub(r"\s*```\s*$", "", cleaned)
+
+        # First, try parsing the entire response.
+        data = None
 
         try:
-            day = int(item.get("day", 1))
-            duration = int(item.get("duration_minutes", 30))
-        except (ValueError, TypeError):
-            day, duration = 1, 30
+            data = json.loads(cleaned)
+        except json.JSONDecodeError:
+            pass
 
-        plan.append(
-            {
-                "title": title[:150],
+        # If the model included extra text, extract a JSON object.
+        if data is None:
+            decoder = json.JSONDecoder()
+
+            for match in re.finditer(r"\{", cleaned):
+                try:
+                    candidate, _ = decoder.raw_decode(
+                        cleaned[match.start():]
+                    )
+
+                    if isinstance(candidate, dict) and "tasks" in candidate:
+                        data = candidate
+                        break
+
+                except json.JSONDecodeError:
+                    continue
+
+        if not isinstance(data, dict):
+            raise ValueError(
+                "Could not parse the AI response as JSON. "
+                "Please try generating the plan again."
+            )
+
+        raw_tasks = data.get("tasks")
+
+        if not isinstance(raw_tasks, list):
+            raise ValueError(
+                "The AI response does not contain a valid tasks list."
+            )
+
+        tasks = []
+
+        for item in raw_tasks:
+            if not isinstance(item, dict):
+                continue
+
+            title = item.get("title")
+
+            if not isinstance(title, str) or not title.strip():
+                continue
+
+            try:
+                day = int(item.get("day", 1))
+                duration = int(item.get("duration_minutes", 30))
+            except (TypeError, ValueError):
+                continue
+
+            priority = str(item.get("priority", "Medium")).capitalize()
+
+            if priority not in {"High", "Medium", "Low"}:
+                priority = "Medium"
+
+            tasks.append({
+                "title": title.strip(),
                 "day": max(1, min(days, day)),
                 "duration_minutes": max(1, duration),
-                "priority": str(item.get("priority", "Medium")).title(),
-            }
-        )
+                "priority": priority,
+            })
 
-    if not plan:
-        raise RuntimeError("The AI response contained no valid task titles.")
+        if not tasks:
+            raise ValueError(
+                "The AI did not return any usable tasks. Try again."
+            )
 
-    return plan
+        return tasks[:10]
+
+    except requests.RequestException as exc:
+        raise RuntimeError(
+            f"Could not connect to OpenRouter: {exc}"
+        ) from exc
 
 
 def show_task(task, view="default"):
